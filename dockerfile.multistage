@@ -1,0 +1,29 @@
+# Build the application from source
+FROM golang:latest AS build-stage
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY *.go ./
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /tg_tesseract .
+
+# Run the tests in the container
+# FROM build-stage AS run-test-stage
+# RUN go test -v ./...
+
+# Deploy the application binary into a lean image
+# gcr.io/distroless/base-debian11
+FROM  alpine:latest AS build-release-stage
+
+WORKDIR /
+RUN apk add tesseract-ocr
+COPY ./tessdata/* /usr/share/tessdata/
+COPY --from=build-stage /tg_tesseract /tg_tesseract
+ENV TESSDATA_PREFIX=/usr/share/tessdata
+
+# USER nonroot:nonroot
+
+ENTRYPOINT ["/tg_tesseract"]
