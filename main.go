@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -14,12 +13,10 @@ import (
 )
 
 func main() {
-	TGBOT_TOKEN := os.Getenv("TGBOT_TOKEN")
-	fmt.Println(TGBOT_TOKEN)
-	bot, e := tgbotapi.NewBotAPI(TGBOT_TOKEN)
-	if e != nil {
-		log.Printf("Auth error: %s", e)
-		panic(e)
+
+	bot, err := tgbotapi.NewBotAPI(os.Getenv("TGBOT_TOKEN"))
+	if err != nil {
+		log.Fatalf("Auth error: %s", err)
 	}
 
 	bot.Debug = false
@@ -30,39 +27,52 @@ func main() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message != nil {
-			//mt.Println("recived")
-			if update.Message.Photo != nil {
-				//fmt.Println("it`s photo")
-				photos := update.Message.Photo
-				photo_url, _ := bot.GetFileDirectURL(photos[len(photos)-1].FileID)
-				pu, _ := url.Parse(photo_url)
-				fn := path.Base(pu.Path)
-				response, e := http.Get(photo_url)
-				if e != nil {
-					panic(e)
-				}
-				fp := path.Join("/tmp", fn)
-				file, e := os.Create(fp)
 
-				if e != nil {
-					panic(e)
-				}
-				io.Copy(file, response.Body)
+		if update.Message == nil {
+			continue
+		}
+		if update.Message.Text == "/report" {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "http://80.73.24.45")
+			msg.ReplyToMessageID = update.Message.MessageID
+		}
 
-				response.Body.Close()
-				//cs := fmt.Sprintf("/bin/tesseract %s stdout -l rus+rus", fn)
-				cmd := exec.Command("tesseract", fp, "stdout", "-l", "rus+eng")
-				b, e := cmd.CombinedOutput()
-				if e != nil {
-					fmt.Println(e)
-				}
-				file.Close()
+		if update.Message.Photo != nil {
+			photos := update.Message.Photo
+			photo_url, _ := bot.GetFileDirectURL(photos[len(photos)-1].FileID)
+			pu, _ := url.Parse(photo_url)
+			fn := path.Base(pu.Path)
+			response, err := http.Get(photo_url)
+			if err != nil {
+				log.Fatalf("GetPhoto error: %s", err)
+			}
 
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, string(b))
-				msg.ReplyToMessageID = update.Message.MessageID
-				bot.Send(msg)
+			fp := path.Join("tmp/", fn)
+			file, err := os.Create(fp)
 
+			if err != nil {
+				log.Fatalf("Create file error: %s", err)
+			}
+			_, err = io.Copy(file, response.Body)
+			if err != nil {
+				log.Fatalf("Copy to file error: %s", err)
+			}
+
+			response.Body.Close()
+
+			cmd := exec.Command("tesseract", fp, "stdout", "-l", "rus+eng")
+			b, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Fatalf("Tesseract error: %s", err)
+			}
+
+			file.Close()
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, string(b))
+			msg.ReplyToMessageID = update.Message.MessageID
+
+			_, err = bot.Send(msg)
+
+			if err != nil {
+				log.Fatalf("Message error: %s", err)
 			}
 		}
 	}
